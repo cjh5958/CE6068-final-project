@@ -1,0 +1,161 @@
+
+🔧 Training Logistic Regression...
+Logistic Regression Confusion Matrix:
+[[7 0 0 0 1]
+ [0 3 0 0 0]
+ [0 0 3 0 0]
+ [0 0 0 3 0]
+ [0 0 0 0 3]]
+Logistic Regression Classification Report:
+                  precision    recall  f1-score   support
+
+             AML       1.00      0.88      0.93         8
+     Bone_Marrow       1.00      1.00      1.00         3
+Bone_Marrow_CD34       1.00      1.00      1.00         3
+              PB       1.00      1.00      1.00         3
+       PBSC_CD34       0.75      1.00      0.86         3
+
+        accuracy                           0.95        20
+       macro avg       0.95      0.97      0.96        20
+    weighted avg       0.96      0.95      0.95        20
+
+Logistic Regression Accuracy: 0.9500
+------------------------------------------------------------
+
+🔧 Training KNN...
+KNN Confusion Matrix:
+[[4 2 0 0 2]
+ [0 3 0 0 0]
+ [1 0 2 0 0]
+ [0 0 0 3 0]
+ [0 0 0 0 3]]
+KNN Classification Report:
+                  precision    recall  f1-score   support
+
+             AML       0.80      0.50      0.62         8
+     Bone_Marrow       0.60      1.00      0.75         3
+Bone_Marrow_CD34       1.00      0.67      0.80         3
+              PB       1.00      1.00      1.00         3
+       PBSC_CD34       0.60      1.00      0.75         3
+
+        accuracy                           0.75        20
+       macro avg       0.80      0.83      0.78        20
+    weighted avg       0.80      0.75      0.74        20
+
+KNN Accuracy: 0.7500
+------------------------------------------------------------
+
+🔧 Training Decision Tree...
+Decision Tree Confusion Matrix:
+[[7 0 0 0 1]
+ [0 3 0 0 0]
+ [1 0 2 0 0]
+ [0 0 0 3 0]
+ [0 0 0 0 3]]
+Decision Tree Classification Report:
+                  precision    recall  f1-score   support
+
+             AML       0.88      0.88      0.88         8
+     Bone_Marrow       1.00      1.00      1.00         3
+Bone_Marrow_CD34       1.00      0.67      0.80         3
+              PB       1.00      1.00      1.00         3
+       PBSC_CD34       0.75      1.00      0.86         3
+
+        accuracy                           0.90        20
+       macro avg       0.93      0.91      0.91        20
+    weighted avg       0.91      0.90      0.90        20
+
+Decision Tree Accuracy: 0.9000
+------------------------------------------------------------
+
+🔧 Training Gradient Boosting...
+Gradient Boosting Confusion Matrix:
+[[8 0 0 0 0]
+ [0 3 0 0 0]
+ [1 0 2 0 0]
+ [0 0 0 3 0]
+ [0 0 0 0 3]]
+Gradient Boosting Classification Report:
+                  precision    recall  f1-score   support
+
+             AML       0.89      1.00      0.94         8
+     Bone_Marrow       1.00      1.00      1.00         3
+Bone_Marrow_CD34       1.00      0.67      0.80         3
+              PB       1.00      1.00      1.00         3
+       PBSC_CD34       1.00      1.00      1.00         3
+
+        accuracy                           0.95        20
+       macro avg       0.98      0.93      0.95        20
+    weighted avg       0.96      0.95      0.95        20
+
+Gradient Boosting Accuracy: 0.9500
+------------------------------------------------------------
+
+🔧 Training MLP...
+MLP Confusion Matrix:
+[[7 0 0 0 1]
+ [0 3 0 0 0]
+ [0 0 3 0 0]
+ [0 0 0 3 0]
+ [0 0 1 0 2]]
+MLP Classification Report:
+                  precision    recall  f1-score   support
+
+             AML       1.00      0.88      0.93         8
+     Bone_Marrow       1.00      1.00      1.00         3
+Bone_Marrow_CD34       0.75      1.00      0.86         3
+              PB       1.00      1.00      1.00         3
+       PBSC_CD34       0.67      0.67      0.67         3
+
+        accuracy                           0.90        20
+       macro avg       0.88      0.91      0.89        20
+    weighted avg       0.91      0.90      0.90        20
+
+MLP Accuracy: 0.9000
+------------------------------------------------------------
+
+🔧 Training Random Forest...
+Random Forest Confusion Matrix:
+[[8 0 0 0 0]
+ [0 3 0 0 0]
+ [1 0 2 0 0]
+ [0 0 0 3 0]
+ [0 0 0 0 3]]
+Random Forest Classification Report:
+                  precision    recall  f1-score   support
+
+             AML       0.89      1.00      0.94         8
+     Bone_Marrow       1.00      1.00      1.00         3
+Bone_Marrow_CD34       1.00      0.67      0.80         3
+              PB       1.00      1.00      1.00         3
+       PBSC_CD34       1.00      1.00      1.00         3
+
+        accuracy                           0.95        20
+       macro avg       0.98      0.93      0.95        20
+    weighted avg       0.96      0.95      0.95        20
+
+Random Forest Accuracy: 0.9500
+------------------------------------------------------------
+
+🔧 Training Stacking...
+Stacking Confusion Matrix:
+[[8 0 0 0 0]
+ [0 3 0 0 0]
+ [0 0 3 0 0]
+ [0 0 0 3 0]
+ [0 0 0 0 3]]
+Stacking Classification Report:
+                  precision    recall  f1-score   support
+
+             AML       1.00      1.00      1.00         8
+     Bone_Marrow       1.00      1.00      1.00         3
+Bone_Marrow_CD34       1.00      1.00      1.00         3
+              PB       1.00      1.00      1.00         3
+       PBSC_CD34       1.00      1.00      1.00         3
+
+        accuracy                           1.00        20
+       macro avg       1.00      1.00      1.00        20
+    weighted avg       1.00      1.00      1.00        20
+
+Stacking Accuracy: 1.0000
+------------------------------------------------------------
