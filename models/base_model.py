@@ -7,9 +7,8 @@ from sklearn.tree import DecisionTreeClassifier
 from sklearn.neural_network import MLPClassifier
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
 from sklearn.preprocessing import StandardScaler, LabelEncoder
-from xgboost import XGBClassifier
-from lightgbm import LGBMClassifier
-from catboost import CatBoostClassifier
+
+SEED = 42
 
 # 載入兩份資料
 df1 = pd.read_csv("datasets/raw_data.csv")
@@ -37,7 +36,7 @@ y2_encoded = le.transform(y2)  # 注意：假設 df2 裡的 type 沒有新類別
 
 # 用 data1 切 train/test
 X1_train, X1_test, y1_train, y1_test = train_test_split(
-    X1, y1_encoded, test_size=0.5, stratify=y1_encoded, random_state=42
+    X1, y1_encoded, test_size=0.5, stratify=y1_encoded, random_state=SEED
 )
 
 # 把 data2 加進 train
@@ -51,15 +50,15 @@ y_test = y1_test
 
 # 模型定義
 base_models = {
-    "Logistic Regression": LogisticRegression(max_iter=1000, random_state=42),
+    "Logistic Regression": LogisticRegression(max_iter=1000, random_state=SEED),
     "KNN": KNeighborsClassifier(),
-    "Decision Tree": DecisionTreeClassifier(random_state=42),
-    #"Gradient Boosting": GradientBoostingClassifier(random_state=42),
-    "MLP": MLPClassifier(random_state=42),
-    "Random Forest": RandomForestClassifier(random_state=42),
-    #"XGBoost": XGBClassifier(eval_metric='logloss', random_state=42),
-    #"LightGBM": LGBMClassifier(random_state=42,force_col_wise=True,),
-    #"CatBoost": CatBoostClassifier(verbose=0, random_state=42),
+    "Decision Tree": DecisionTreeClassifier(random_state=SEED),
+    #"Gradient Boosting": GradientBoostingClassifier(random_state=SEED),
+    "MLP": MLPClassifier(random_state=SEED),
+    "Random Forest": RandomForestClassifier(random_state=SEED),
+    #"XGBoost": XGBClassifier(eval_metric='logloss', random_state=SEED),
+    #"LightGBM": LGBMClassifier(random_state=SEED,force_col_wise=True,),
+    #"CatBoost": CatBoostClassifier(verbose=0, random_state=SEED),
 }
 
 """# 加入 Stacking 模型
@@ -81,7 +80,7 @@ X_test_scaled = scaler.transform(X_test)
 models_need_scaling = ["KNN", "MLP", "Logistic Regression", "SVC"]
 
 # 開啟輸出檔案
-output_path = "model_results.txt"
+output_path = "model_results_" + str(SEED) + ".txt"
 with open(output_path, "w", encoding="utf-8") as f:
     for model_name, model in base_models.items():
         print(f"\n🔧 Training {model_name}...")
