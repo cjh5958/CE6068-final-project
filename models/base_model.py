@@ -14,6 +14,11 @@ from catboost import CatBoostClassifier
 # 載入兩份資料
 df1 = pd.read_csv("datasets/raw_data.csv")
 df2 = pd.read_csv("datasets/generated_data.csv")
+df3 = pd.read_csv("datasets/generated_data_bone_marrow_20250602_190942.csv")
+df4 = pd.read_csv("datasets/generated_data_bone_marrow_cd34_20250602_190857.csv")
+df5 = pd.read_csv("datasets/generated_data_pb_20250602_191001.csv")
+df6 = pd.read_csv("datasets/generated_data_pbsc_cd34_20250602_190921.csv")
+df2 = pd.concat([df2,df3,df4], ignore_index=True)
 
 # 前處理（假設格式相同）
 df1 = df1.drop(columns=["samples"])
@@ -54,7 +59,7 @@ base_models = {
     "Logistic Regression": LogisticRegression(max_iter=1000, random_state=42),
     "KNN": KNeighborsClassifier(),
     "Decision Tree": DecisionTreeClassifier(random_state=42),
-    #"Gradient Boosting": GradientBoostingClassifier(random_state=42),
+    "Gradient Boosting": GradientBoostingClassifier(random_state=42),
     "MLP": MLPClassifier(random_state=42),
     "Random Forest": RandomForestClassifier(random_state=42),
     #"XGBoost": XGBClassifier(eval_metric='logloss', random_state=42),
@@ -62,7 +67,7 @@ base_models = {
     #"CatBoost": CatBoostClassifier(verbose=0, random_state=42),
 }
 
-"""# 加入 Stacking 模型
+# 加入 Stacking 模型
 stacking_model = StackingClassifier(
     estimators=[
         ('rf', base_models["Random Forest"]),
@@ -72,7 +77,7 @@ stacking_model = StackingClassifier(
     final_estimator=LogisticRegression(),
     cv=5
 )
-base_models["Stacking"] = stacking_model"""
+base_models["Stacking"] = stacking_model
 
 # 標準化
 scaler = StandardScaler()
