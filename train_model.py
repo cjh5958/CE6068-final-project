@@ -28,7 +28,7 @@ import pickle
 # Import our modules
 from cvae_model import ConditionalVAE
 from cvae_trainer import CVAETrainer
-from data_preprocessing import DataPreprocessor
+from data_preprocessing import LeukemiaDataPreprocessor
 
 warnings.filterwarnings('ignore')
 
@@ -239,7 +239,10 @@ class ModelTrainingPipeline:
         self.trainer = CVAETrainer(
             model=self.model,
             device=self.device,
-            learning_rate=self.config['training']['learning_rate']
+            learning_rate=self.config['training']['learning_rate'],
+            beta_schedule=self.config['training']['beta_schedule'],
+            beta_start=self.config['training']['beta_start'],
+            beta_end=self.config['training']['beta_end']
         )
         
         # Prepare training data
@@ -257,11 +260,8 @@ class ModelTrainingPipeline:
         training_params = {
             'epochs': self.config['training']['epochs'],
             'batch_size': self.config['training']['batch_size'],
-            'patience': self.config['training']['patience'],
-            'beta_schedule': self.config['training']['beta_schedule'],
-            'beta_start': self.config['training']['beta_start'],
-            'beta_end': self.config['training']['beta_end'],
-            'output_dir': self.config['output']['logs_dir']
+            'early_stopping_patience': self.config['training']['patience'],
+            'save_dir': self.config['output']['model_dir']
         }
         
         # Start training
