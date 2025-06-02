@@ -196,3 +196,10 @@ cython_debug/
 
 # model files
 models/*.pth
+
+# output datasets
+datasets/
+!datasets/raw_data.csv
+!datasets/label_encoder.pkl
+!datasets/scaler.pkl
+!datasets/metadata.pkl

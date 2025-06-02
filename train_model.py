@@ -89,8 +89,8 @@ class ModelTrainingPipeline:
         
     def _update_config(self, new_config):
         """Recursively update configuration"""
-        def update_dict(base_dict, update_dict):
-            for key, value in update_dict.items():
+        def update_dict(base_dict, new_dict):
+            for key, value in new_dict.items():
                 if key in base_dict and isinstance(base_dict[key], dict) and isinstance(value, dict):
                     update_dict(base_dict[key], value)
                 else:
