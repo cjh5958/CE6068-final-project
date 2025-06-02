@@ -33,6 +33,7 @@ class LeukemiaCVAEGenerator:
         self.scaler_path = os.path.join('datasets', 'scaler.pkl')
         self.label_encoder_path = os.path.join('datasets', 'label_encoder.pkl')
         self.metadata_path = os.path.join('datasets', 'metadata.pkl')
+        self.pca_path = 'datasets/pca.pkl'
         
         self.device = torch.device('cpu')
         self.model = None
@@ -47,30 +48,36 @@ class LeukemiaCVAEGenerator:
     def _load_components(self):
         """Load model and preprocessing components"""
         try:
+            # Load PCA
+            if os.path.exists(self.pca_path):
+                with open(self.pca_path, 'rb') as f:
+                    self.pca = pickle.load(f)
+                print(f"✅ PCA loaded successfully (n_components={self.pca.n_components_}, original_dim={self.pca.components_.shape[1]})")
+                input_dim = self.pca.n_components_
+            else:
+                self.pca = None
+                print("⚠️  PCA not found, cannot restore to original dimension")
+                input_dim = 32  # fallback
+            # 直接用固定 hidden_dims 或從模型檔案 config 讀取
+            encoder_hidden_dims = [64, 32]
+            decoder_hidden_dims = [32, 64]
             # Load model
             if os.path.exists(self.model_path):
                 from cvae_model import ConditionalVAE
-                
-                # Load state dict
                 checkpoint = torch.load(self.model_path, 
                                       map_location=self.device, 
                                       weights_only=False)
-                
-                # Initialize model with correct parameters
                 self.model = ConditionalVAE(
-                    input_dim=22283,
+                    input_dim=input_dim,
                     condition_dim=5,
-                    latent_dim=256,
-                    encoder_hidden_dims=[2048, 1024, 512, 256],
-                    decoder_hidden_dims=[256, 512, 1024, 2048]
+                    latent_dim=16,
+                    encoder_hidden_dims=encoder_hidden_dims,
+                    decoder_hidden_dims=decoder_hidden_dims
                 )
-                
-                # Load weights
                 if 'model_state_dict' in checkpoint:
                     self.model.load_state_dict(checkpoint['model_state_dict'])
                 else:
                     self.model.load_state_dict(checkpoint)
-                    
                 self.model.eval()
                 print("✅ Model loaded successfully")
             else:
@@ -137,10 +144,8 @@ class LeukemiaCVAEGenerator:
         with torch.no_grad():
             generated_samples = self.model.generate(condition, n_samples=n_samples)
             
-        # Convert to numpy and denormalize
+        # 直接輸出 32 維特徵，不做 scaler.inverse_transform
         generated_samples = generated_samples.cpu().numpy()
-        generated_samples = self.scaler.inverse_transform(generated_samples)
-        
         return {
             'features': generated_samples,
             'labels': np.full(n_samples, class_idx),
@@ -180,7 +185,7 @@ class LeukemiaCVAEGenerator:
             'generation_time': datetime.now().isoformat()
         }
     
-    def save_data(self, data, output_prefix='leukemia_data', save_format='both'):
+    def save_data(self, data, output_prefix='gen_data', save_format='both'):
         """Save generated data to files
         
         Args:
@@ -196,38 +201,30 @@ class LeukemiaCVAEGenerator:
         os.makedirs(output_dir, exist_ok=True)
         
         if save_format in ['csv', 'both']:
-            # Create DataFrame with gene features
+            # Create DataFrame with PCA features
             df = pd.DataFrame(data['features'])
-            df.columns = self.gene_names
-            
+            # 欄位名稱：PCA_0, PCA_1, ...
+            pca_columns = [f'PCA_{i}' for i in range(df.shape[1])]
+            df.columns = pca_columns
             # Add samples column (starting from next available number)
-            # Generate sample IDs starting from a reasonable number
-            start_sample_id = 1000  # Start from 1000 to avoid conflicts with original data
+            start_sample_id = 1000
             sample_ids = list(range(start_sample_id, start_sample_id + len(df)))
-            
-            # Insert samples and type columns at the beginning to match original format
+            df.insert(0, 'type', data['class_names'])
             df.insert(0, 'samples', sample_ids)
-            df.insert(1, 'type', data['class_names'])  # Use original class names
-            
-            # Ensure column order matches original: samples, type, then all gene columns
-            column_order = ['samples', 'type'] + self.gene_names
-            df = df[column_order]
-            
             # Save CSV
-            csv_path = os.path.join(output_dir, f'{output_prefix}_{timestamp}.csv')
+            csv_path = os.path.join(output_dir, f'gen_data.csv')
             df.to_csv(csv_path, index=False)
             results['csv_file'] = csv_path
             print(f"✅ CSV saved: {csv_path}")
-            print(f"   Format: samples, type, {len(self.gene_names)} gene columns")
+            print(f"   Format: samples, type, {len(pca_columns)} PCA columns")
         
         if save_format in ['pkl', 'both']:
-            # Save PKL with complete metadata
-            pkl_path = os.path.join(output_dir, f'{output_prefix}_complete_{timestamp}.pkl')
+            pkl_path = os.path.join(output_dir, f'gen_data_complete.pkl')
             complete_data = {
                 **data,
                 'metadata': {
-                    'total_genes': data['features'].shape[1],
-                    'gene_names': self.gene_names,
+                    'total_pca_dim': data['features'].shape[1],
+                    'pca_columns': [f'PCA_{i}' for i in range(data['features'].shape[1])],
                     'available_classes': self.class_names,
                     'save_time': datetime.now().isoformat()
                 }
@@ -244,7 +241,7 @@ class LeukemiaCVAEGenerator:
                                output_prefix=None, save_format='both'):
         """One-click generation and saving"""
         if output_prefix is None:
-            output_prefix = f'{leukemia_type.lower()}_samples'
+            output_prefix = 'gen_data'
         
         print(f"🧬 Generating {n_samples} {leukemia_type} samples...")
         data = self.generate_samples(leukemia_type, n_samples)
@@ -260,7 +257,7 @@ class LeukemiaCVAEGenerator:
         return data
     
     def quick_generate_balanced_and_save(self, samples_per_class=50, 
-                                        output_prefix='balanced_leukemia_dataset',
+                                        output_prefix='gen_data',
                                         save_format='both'):
         """One-click balanced dataset generation and saving"""
         total_samples = samples_per_class * 5

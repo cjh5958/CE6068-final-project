@@ -24,6 +24,7 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 import pickle
+from sklearn.decomposition import PCA
 
 # Import our modules
 from cvae_model import ConditionalVAE
@@ -50,11 +51,11 @@ class ModelTrainingPipeline:
                 'random_state': 42
             },
             'model': {
-                'input_dim': 22283,
+                'input_dim': 32,
                 'condition_dim': 5,
-                'latent_dim': 256,
-                'encoder_hidden_dims': [2048, 1024, 512, 256],
-                'decoder_hidden_dims': [256, 512, 1024, 2048]
+                'latent_dim': 16,
+                'encoder_hidden_dims': [64, 32],
+                'decoder_hidden_dims': [32, 64]
             },
             'training': {
                 'batch_size': 8,
@@ -141,7 +142,11 @@ class ModelTrainingPipeline:
         print(f"   - Class distribution: {dict(zip(*np.unique(y, return_counts=True)))}")
         print(f"   - Gene columns: {len(gene_columns)} genes")
         
-        # Split data
+        # 先 fit 全部資料
+        label_encoder = LabelEncoder()
+        label_encoder.fit(y)
+        
+        # 再分割資料
         X_temp, X_test, y_temp, y_test = train_test_split(
             X, y, 
             test_size=self.config['data']['test_size'],
@@ -170,9 +175,8 @@ class ModelTrainingPipeline:
         X_val_scaled = scaler.transform(X_val)
         X_test_scaled = scaler.transform(X_test)
         
-        # Label encoding
-        label_encoder = LabelEncoder()
-        y_train_encoded = label_encoder.fit_transform(y_train)
+        # 再 transform
+        y_train_encoded = label_encoder.transform(y_train)
         y_val_encoded = label_encoder.transform(y_val)
         y_test_encoded = label_encoder.transform(y_test)
         
@@ -199,10 +203,36 @@ class ModelTrainingPipeline:
         
         print("✅ Preprocessing completed and saved")
         
+        # ===== 新增：PCA降維 =====
+        pca_dim = self.config['data'].get('pca_dim', 32)
+        print(f'PCA dim used: {pca_dim}')
+        pca = PCA(n_components=pca_dim, random_state=self.config['data']['random_state'])
+        X_train_pca = pca.fit_transform(X_train_scaled)
+        X_val_pca = pca.transform(X_val_scaled)
+        X_test_pca = pca.transform(X_test_scaled)
+        # 儲存PCA物件
+        with open('datasets/pca.pkl', 'wb') as f:
+            pickle.dump(pca, f)
+        print(f"✅ PCA completed. Explained variance ratio (first 5): {pca.explained_variance_ratio_[:5]}")
+        # =========================
+        
+        # ===== 新增：儲存降維後的raw_data_reduced.csv =====
+        # 合併所有資料
+        all_X_pca = np.vstack([X_train_pca, X_val_pca, X_test_pca])
+        all_y_encoded = np.concatenate([y_train_encoded, y_val_encoded, y_test_encoded])
+        all_samples = np.arange(1000, 1000 + all_X_pca.shape[0])
+        pca_columns = [f'PCA_{i}' for i in range(all_X_pca.shape[1])]
+        df_reduced = pd.DataFrame(all_X_pca, columns=pca_columns)
+        df_reduced.insert(0, 'type', label_encoder.inverse_transform(all_y_encoded))
+        df_reduced.insert(0, 'samples', all_samples)
+        df_reduced.to_csv('datasets/raw_data_reduced.csv', index=False)
+        print(f"✅ Saved PCA-reduced data to datasets/raw_data_reduced.csv, shape: {df_reduced.shape}")
+        # ===================================================
+        
         return {
-            'X_train': X_train_scaled,
-            'X_val': X_val_scaled, 
-            'X_test': X_test_scaled,
+            'X_train': X_train_pca,
+            'X_val': X_val_pca, 
+            'X_test': X_test_pca,
             'y_train': y_train_encoded,
             'y_val': y_val_encoded,
             'y_test': y_test_encoded,
@@ -214,18 +244,15 @@ class ModelTrainingPipeline:
     def create_model(self):
         """Create the cVAE model"""
         print("🔄 Creating cVAE model...")
-        
+        # 直接從 config 讀取 hidden_dims，不自動調整
         model = ConditionalVAE(**self.config['model']).to(self.device)
-        
         total_params = sum(p.numel() for p in model.parameters())
         trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-        
         print(f"✅ Model created:")
         print(f"   - Device: {self.device}")
         print(f"   - Total parameters: {total_params:,}")
         print(f"   - Trainable parameters: {trainable_params:,}")
         print(f"   - Model size: ~{total_params * 4 / 1024 / 1024:.1f} MB")
-        
         return model
     
     def train_model(self, data):
@@ -378,8 +405,9 @@ def main():
     parser.add_argument('--epochs', type=int, default=100, help='Number of training epochs')
     parser.add_argument('--batch-size', type=int, default=8, help='Training batch size')
     parser.add_argument('--learning-rate', type=float, default=1e-4, help='Learning rate')
-    parser.add_argument('--latent-dim', type=int, default=256, help='Latent space dimension')
+    parser.add_argument('--latent-dim', type=int, default=16, help='Latent space dimension')
     parser.add_argument('--device', type=str, default='auto', help='Training device (auto, cpu, cuda)')
+    parser.add_argument('--pca-dim', type=int, default=32, help='PCA output dimension (feature selection)')
     
     args = parser.parse_args()
     
@@ -398,10 +426,14 @@ def main():
         config.setdefault('training', {})['batch_size'] = args.batch_size
     if args.learning_rate != 1e-4:
         config.setdefault('training', {})['learning_rate'] = args.learning_rate
-    if args.latent_dim != 256:
+    if args.latent_dim != 16:
         config.setdefault('model', {})['latent_dim'] = args.latent_dim
     if args.device != 'auto':
         config.setdefault('training', {})['device'] = args.device
+    # 無論 config 有無 data，都要設 pca_dim
+    if 'data' not in config:
+        config['data'] = {}
+    config['data']['pca_dim'] = args.pca_dim
     
     # Initialize and run training pipeline
     pipeline = ModelTrainingPipeline(config)

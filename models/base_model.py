@@ -11,8 +11,8 @@ from sklearn.preprocessing import StandardScaler, LabelEncoder
 SEED = 42
 
 # 載入兩份資料
-df1 = pd.read_csv("datasets/raw_data.csv")
-df2 = pd.read_csv("datasets/generated_data.csv")
+df1 = pd.read_csv("datasets/raw_data_reduced.csv")
+df2 = pd.read_csv("datasets/gen_data.csv")
 
 # 前處理（假設格式相同）
 df1 = df1.drop(columns=["samples"])
