@@ -203,3 +203,6 @@ datasets/
 !datasets/label_encoder.pkl
 !datasets/scaler.pkl
 !datasets/metadata.pkl
+
+# log files
+model_results.txt
