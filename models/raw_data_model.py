@@ -62,7 +62,7 @@ X_test_scaled = scaler.transform(X_test)
 models_need_scaling = ["KNN", "MLP", "Logistic Regression", "SVC"]
 
 # 開啟輸出檔案
-output_path = "model_results.txt"
+output_path = "model_results_test0.5.txt"
 with open(output_path, "w", encoding="utf-8") as f:
     for model_name, model in base_models.items():
         print(f"\n🔧 Training {model_name}...")
