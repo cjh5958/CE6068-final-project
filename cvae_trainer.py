@@ -50,9 +50,11 @@ class CVAETrainer:
             'train_loss': [],
             'train_recon_loss': [],
             'train_kl_loss': [],
+            'train_class_loss': [],
             'val_loss': [],
             'val_recon_loss': [],
             'val_kl_loss': [],
+            'val_class_loss': [],
             'beta_values': []
         }
         
@@ -79,7 +81,7 @@ class CVAETrainer:
         Train for one epoch
         """
         self.model.train()
-        epoch_losses = {'total': [], 'recon': [], 'kl': []}
+        epoch_losses = {'total': [], 'recon': [], 'kl': [], 'class': []}
         
         # Get beta for this epoch
         beta = self.get_beta(epoch, total_epochs)
@@ -98,7 +100,7 @@ class CVAETrainer:
             )
             
             # Forward pass and compute loss
-            loss_dict = self.model.compute_loss(x, condition, beta=beta)
+            loss_dict = self.model.compute_loss(x, condition, beta=beta, labels=labels)
             
             # Backward pass
             self.optimizer.zero_grad()
@@ -113,12 +115,14 @@ class CVAETrainer:
             epoch_losses['total'].append(loss_dict['total_loss'].item())
             epoch_losses['recon'].append(loss_dict['recon_loss'].item())
             epoch_losses['kl'].append(loss_dict['kl_loss'].item())
+            epoch_losses['class'].append(loss_dict['class_loss'].item())
             
             # Update progress bar
             progress_bar.set_postfix({
                 'Loss': f"{loss_dict['total_loss'].item():.4f}",
                 'Recon': f"{loss_dict['recon_loss'].item():.4f}",
                 'KL': f"{loss_dict['kl_loss'].item():.4f}",
+                'Class': f"{loss_dict['class_loss'].item():.4f}",
                 'β': f"{beta:.3f}"
             })
         
@@ -127,6 +131,7 @@ class CVAETrainer:
             'total_loss': np.mean(epoch_losses['total']),
             'recon_loss': np.mean(epoch_losses['recon']),
             'kl_loss': np.mean(epoch_losses['kl']),
+            'class_loss': np.mean(epoch_losses['class']),
             'beta': beta
         }
         
@@ -137,7 +142,7 @@ class CVAETrainer:
         Validate for one epoch
         """
         self.model.eval()
-        epoch_losses = {'total': [], 'recon': [], 'kl': []}
+        epoch_losses = {'total': [], 'recon': [], 'kl': [], 'class': []}
         
         with torch.no_grad():
             for x, labels in dataloader:
@@ -152,18 +157,20 @@ class CVAETrainer:
                 )
                 
                 # Compute loss
-                loss_dict = self.model.compute_loss(x, condition, beta=beta)
+                loss_dict = self.model.compute_loss(x, condition, beta=beta, labels=labels)
                 
                 # Record losses
                 epoch_losses['total'].append(loss_dict['total_loss'].item())
                 epoch_losses['recon'].append(loss_dict['recon_loss'].item())
                 epoch_losses['kl'].append(loss_dict['kl_loss'].item())
+                epoch_losses['class'].append(loss_dict['class_loss'].item())
         
         # Calculate average losses
         avg_losses = {
             'total_loss': np.mean(epoch_losses['total']),
             'recon_loss': np.mean(epoch_losses['recon']),
             'kl_loss': np.mean(epoch_losses['kl']),
+            'class_loss': np.mean(epoch_losses['class']),
             'beta': beta
         }
         
@@ -226,23 +233,27 @@ class CVAETrainer:
             self.history['train_loss'].append(train_losses['total_loss'])
             self.history['train_recon_loss'].append(train_losses['recon_loss'])
             self.history['train_kl_loss'].append(train_losses['kl_loss'])
+            self.history['train_class_loss'].append(train_losses['class_loss'])
             self.history['beta_values'].append(train_losses['beta'])
             
             if val_losses:
                 self.history['val_loss'].append(val_losses['total_loss'])
                 self.history['val_recon_loss'].append(val_losses['recon_loss'])
                 self.history['val_kl_loss'].append(val_losses['kl_loss'])
+                self.history['val_class_loss'].append(val_losses['class_loss'])
             
             # Print epoch summary
             print(f"\nEpoch {epoch+1}/{epochs}:")
             print(f"  Train - Total: {train_losses['total_loss']:.4f}, "
                   f"Recon: {train_losses['recon_loss']:.4f}, "
-                  f"KL: {train_losses['kl_loss']:.4f}")
+                  f"KL: {train_losses['kl_loss']:.4f}, "
+                  f"Class: {train_losses['class_loss']:.4f}")
             
             if val_losses:
                 print(f"  Val   - Total: {val_losses['total_loss']:.4f}, "
                       f"Recon: {val_losses['recon_loss']:.4f}, "
-                      f"KL: {val_losses['kl_loss']:.4f}")
+                      f"KL: {val_losses['kl_loss']:.4f}, "
+                      f"Class: {val_losses['class_loss']:.4f}")
                 
                 # Early stopping check
                 if val_losses['total_loss'] < best_val_loss:
@@ -334,11 +345,13 @@ class CVAETrainer:
         axes[1, 0].legend()
         axes[1, 0].grid(True, alpha=0.3)
         
-        # Beta Values
-        axes[1, 1].plot(epochs, self.history['beta_values'], 'g-', label='β value')
-        axes[1, 1].set_title('Beta Schedule')
+        # Class Loss
+        axes[1, 1].plot(epochs, self.history['train_class_loss'], 'b-', label='Train')
+        if self.history['val_class_loss']:
+            axes[1, 1].plot(epochs, self.history['val_class_loss'], 'r-', label='Validation')
+        axes[1, 1].set_title('Class Loss')
         axes[1, 1].set_xlabel('Epoch')
-        axes[1, 1].set_ylabel('β')
+        axes[1, 1].set_ylabel('Class Loss')
         axes[1, 1].legend()
         axes[1, 1].grid(True, alpha=0.3)
         

@@ -24,6 +24,7 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 import pickle
+from sklearn.ensemble import RandomForestClassifier
 
 # Import our modules
 from cvae_model import ConditionalVAE
@@ -50,11 +51,11 @@ class ModelTrainingPipeline:
                 'random_state': 42
             },
             'model': {
-                'input_dim': 22283,
+                'input_dim': 200,
                 'condition_dim': 5,
-                'latent_dim': 256,
-                'encoder_hidden_dims': [2048, 1024, 512, 256],
-                'decoder_hidden_dims': [256, 512, 1024, 2048]
+                'latent_dim': 32,
+                'encoder_hidden_dims': [128, 64],
+                'decoder_hidden_dims': [64, 128]
             },
             'training': {
                 'batch_size': 8,
@@ -164,45 +165,71 @@ class ModelTrainingPipeline:
         # Preprocessing
         print("🔄 Applying preprocessing...")
         
-        # Feature scaling
-        scaler = StandardScaler()
-        X_train_scaled = scaler.fit_transform(X_train)
-        X_val_scaled = scaler.transform(X_val)
-        X_test_scaled = scaler.transform(X_test)
-        
         # Label encoding
         label_encoder = LabelEncoder()
         y_train_encoded = label_encoder.fit_transform(y_train)
         y_val_encoded = label_encoder.transform(y_val)
         y_test_encoded = label_encoder.transform(y_test)
         
-        # Save preprocessors
+        # ===== 新增：特徵選擇 =====
+        n_selected = 500  # 可調整
+        print(f"🔍 進行特徵選擇（隨機森林，選前 {n_selected} 個基因）...")
+        rf = RandomForestClassifier(n_estimators=100, random_state=self.config['data']['random_state'])
+        rf.fit(X_train, y_train)
+        importances = rf.feature_importances_
+        indices = np.argsort(importances)[::-1][:n_selected]
+        selected_genes = [gene_columns[i] for i in indices]
+        # 儲存特徵選擇結果
+        with open('datasets/selected_genes.txt', 'w', encoding='utf-8') as f:
+            for g in selected_genes:
+                f.write(g + '\n')
+        print(f"✅ 已選出 {n_selected} 個基因特徵，已存至 datasets/selected_genes.txt")
+        # 只保留選中的特徵
+        X_train = X_train[:, indices]
+        X_val = X_val[:, indices]
+        X_test = X_test[:, indices]
+        gene_columns = selected_genes
+        # Feature scaling
+        scaler = StandardScaler()
+        X_train_scaled = scaler.fit_transform(X_train)
+        X_val_scaled = scaler.transform(X_val)
+        X_test_scaled = scaler.transform(X_test)
+        # 儲存 scaler
         with open('datasets/scaler.pkl', 'wb') as f:
             pickle.dump(scaler, f)
-        
+        # 儲存 label_encoder
         with open('datasets/label_encoder.pkl', 'wb') as f:
             pickle.dump(label_encoder, f)
-        
-        # Save metadata including gene names
+        # Save metadata including gene names (特徵選擇後)
         metadata = {
             'class_names': label_encoder.classes_.tolist(),
-            'gene_names': gene_columns,  # Save original gene column names
+            'gene_names': gene_columns,  # 這時候是 200 維
             'n_features': X_train.shape[1],
             'n_classes': len(label_encoder.classes_),
-            'feature_range': [float(X_train_scaled.min()), float(X_train_scaled.max())],
+            'feature_range': [float(X_train.min()), float(X_train.max())],
             'training_samples': X_train.shape[0],
             'preprocessing_date': datetime.now().isoformat()
         }
-        
+        # 儲存 metadata
         with open('datasets/metadata.pkl', 'wb') as f:
             pickle.dump(metadata, f)
-        
-        print("✅ Preprocessing completed and saved")
-        
+        # input_dim 只根據 n_selected 設定
+        X_train_final, X_val_final, X_test_final = X_train_scaled, X_val_scaled, X_test_scaled
+        feature_columns = gene_columns
+        self.config['model']['input_dim'] = n_selected
+        # 儲存降維後的raw_data_reduced.csv
+        all_X = np.vstack([X_train_final, X_val_final, X_test_final])
+        all_y_encoded = np.concatenate([y_train_encoded, y_val_encoded, y_test_encoded])
+        all_samples = np.arange(1000, 1000 + all_X.shape[0])
+        df_reduced = pd.DataFrame(all_X, columns=feature_columns)
+        df_reduced.insert(0, 'type', label_encoder.inverse_transform(all_y_encoded))
+        df_reduced.insert(0, 'samples', all_samples)
+        df_reduced.to_csv('datasets/raw_data_reduced.csv', index=False)
+        print(f"✅ Saved reduced data to datasets/raw_data_reduced.csv, shape: {df_reduced.shape}")
         return {
-            'X_train': X_train_scaled,
-            'X_val': X_val_scaled, 
-            'X_test': X_test_scaled,
+            'X_train': X_train_final,
+            'X_val': X_val_final,
+            'X_test': X_test_final,
             'y_train': y_train_encoded,
             'y_val': y_val_encoded,
             'y_test': y_test_encoded,
@@ -215,7 +242,10 @@ class ModelTrainingPipeline:
         """Create the cVAE model"""
         print("🔄 Creating cVAE model...")
         
-        model = ConditionalVAE(**self.config['model']).to(self.device)
+        model_kwargs = dict(self.config['model'])
+        if 'lambda_class' not in model_kwargs:
+            model_kwargs['lambda_class'] = 1.0
+        model = ConditionalVAE(**model_kwargs).to(self.device)
         
         total_params = sum(p.numel() for p in model.parameters())
         trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)

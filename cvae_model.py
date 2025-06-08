@@ -141,12 +141,14 @@ class ConditionalVAE(nn.Module):
                  condition_dim: int = 5,
                  latent_dim: int = 256,
                  encoder_hidden_dims: list = None,
-                 decoder_hidden_dims: list = None):
+                 decoder_hidden_dims: list = None,
+                 lambda_class: float = 1.0):
         super(ConditionalVAE, self).__init__()
         
         self.input_dim = input_dim
         self.condition_dim = condition_dim
         self.latent_dim = latent_dim
+        self.lambda_class = lambda_class
         
         # Initialize encoder and decoder
         self.encoder = Encoder(
@@ -162,6 +164,9 @@ class ConditionalVAE(nn.Module):
             output_dim=input_dim,
             hidden_dims=decoder_hidden_dims
         )
+        
+        # 新增 latent space 分類器
+        self.classifier = nn.Linear(latent_dim, condition_dim)
         
         # Initialize weights
         self.apply(self._init_weights)
@@ -214,11 +219,15 @@ class ConditionalVAE(nn.Module):
         # Decode
         reconstructed = self.decoder(z, condition)
         
+        # 分類 logits
+        class_logits = self.classifier(z)
+        
         return {
             'reconstructed': reconstructed,
             'mu': mu,
             'logvar': logvar,
-            'z': z
+            'z': z,
+            'class_logits': class_logits
         }
     
     def encode(self, x: torch.Tensor, condition: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -280,14 +289,15 @@ class ConditionalVAE(nn.Module):
         return generated
     
     def compute_loss(self, x: torch.Tensor, condition: torch.Tensor, 
-                    beta: float = 1.0) -> Dict[str, torch.Tensor]:
+                    beta: float = 1.0, labels: torch.Tensor = None) -> Dict[str, torch.Tensor]:
         """
-        Compute cVAE loss (reconstruction + KL divergence)
+        Compute cVAE loss (reconstruction + KL divergence + classification loss)
         
         Args:
             x: Input gene expression data
             condition: One-hot encoded conditions
             beta: Weight for KL divergence term (β-VAE)
+            labels: (optional) class labels (LongTensor) [batch_size]
             
         Returns:
             Dictionary containing total loss and individual components
@@ -297,6 +307,7 @@ class ConditionalVAE(nn.Module):
         reconstructed = outputs['reconstructed']
         mu = outputs['mu']
         logvar = outputs['logvar']
+        class_logits = outputs['class_logits']
         
         # Reconstruction loss (MSE for gene expression)
         recon_loss = F.mse_loss(reconstructed, x, reduction='mean')
@@ -304,13 +315,19 @@ class ConditionalVAE(nn.Module):
         # KL divergence loss
         kl_loss = -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())
         
+        # 分類 loss
+        class_loss = torch.tensor(0.0, device=x.device)
+        if labels is not None:
+            class_loss = F.cross_entropy(class_logits, labels)
+        
         # Total loss
-        total_loss = recon_loss + beta * kl_loss
+        total_loss = recon_loss + beta * kl_loss + self.lambda_class * class_loss
         
         return {
             'total_loss': total_loss,
             'recon_loss': recon_loss,
             'kl_loss': kl_loss,
+            'class_loss': class_loss,
             'beta': beta
         }
 

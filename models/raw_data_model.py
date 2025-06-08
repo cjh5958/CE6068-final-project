@@ -11,7 +11,7 @@ from sklearn.preprocessing import StandardScaler, LabelEncoder
 SEED = 42
 
 # 載入資料
-data_path = "datasets/raw_data.csv"
+data_path = "datasets/raw_data_reduced.csv"
 df = pd.read_csv(data_path)
 
 # 前處理

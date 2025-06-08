@@ -253,9 +253,10 @@ Available leukemia types:
     # Check if required files exist
     required_files = [
         'models/leukemia_cvae_model.pth',
-        'datasets/scaler.pkl'
+        'datasets/scaler.pkl',
+        'datasets/label_encoder.pkl',
+        'datasets/metadata.pkl'
     ]
-    
     missing_files = [f for f in required_files if not os.path.exists(f)]
     if missing_files:
         print("❌ Required files not found:")
@@ -275,37 +276,30 @@ Available leukemia types:
         # Generate data based on mode
         if args.balanced:
             # Balanced dataset generation
-            print(f"🧬 Generating balanced dataset ({args.samples_per_class} samples per type)...")
-            
+            print(f"🧬 (Latent 擴增) 針對原始樣本 balanced 擴增，每類 {args.samples_per_class} 筆...")
             output_prefix = args.output
-            
             data = generator.quick_generate_balanced_and_save(
                 samples_per_class=args.samples_per_class,
                 output_prefix=output_prefix,
                 save_format=args.format
             )
-            
             print(f"\n✅ Generated balanced dataset:")
             print(f"   - Total samples: {data['total_samples']}")
             print(f"   - Per class: {data['samples_per_class']}")
             print(f"   - Classes: {len(generator.class_names)}")
-            
         else:
             # Single type generation
-            print(f"🧬 Generating {args.samples} {args.type} samples...")
-            
+            print(f"�� (Latent 擴增) 針對原始樣本產生 {args.samples} 筆 {args.type}...")
             output_prefix = f"{args.output}_{args.type.lower()}"
-            
             data = generator.quick_generate_and_save(
                 leukemia_type=args.type,
                 n_samples=args.samples,
                 output_prefix=output_prefix,
                 save_format=args.format
             )
-            
             print(f"\n✅ Generated {args.type} samples:")
             print(f"   - Samples: {data['n_samples']}")
-            print(f"   - Type: {data['leukemia_type']}")
+            print(f"   - Type: {args.type}")
         
         # Generate distribution plots if requested
         if not args.no_plots:

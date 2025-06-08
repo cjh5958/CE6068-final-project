@@ -47,52 +47,7 @@ class LeukemiaCVAEGenerator:
     def _load_components(self):
         """Load model and preprocessing components"""
         try:
-            # Load model
-            if os.path.exists(self.model_path):
-                from cvae_model import ConditionalVAE
-                
-                # Load state dict
-                checkpoint = torch.load(self.model_path, 
-                                      map_location=self.device, 
-                                      weights_only=False)
-                
-                # Initialize model with correct parameters
-                self.model = ConditionalVAE(
-                    input_dim=22283,
-                    condition_dim=5,
-                    latent_dim=256,
-                    encoder_hidden_dims=[2048, 1024, 512, 256],
-                    decoder_hidden_dims=[256, 512, 1024, 2048]
-                )
-                
-                # Load weights
-                if 'model_state_dict' in checkpoint:
-                    self.model.load_state_dict(checkpoint['model_state_dict'])
-                else:
-                    self.model.load_state_dict(checkpoint)
-                    
-                self.model.eval()
-                print("✅ Model loaded successfully")
-            else:
-                raise FileNotFoundError(f"Model file not found: {self.model_path}")
-            
-            # Load scaler
-            if os.path.exists(self.scaler_path):
-                with open(self.scaler_path, 'rb') as f:
-                    self.scaler = pickle.load(f)
-                print("✅ Scaler loaded successfully")
-            else:
-                raise FileNotFoundError(f"Scaler file not found: {self.scaler_path}")
-            
-            # Load label encoder
-            if os.path.exists(self.label_encoder_path):
-                with open(self.label_encoder_path, 'rb') as f:
-                    self.label_encoder = pickle.load(f)
-                print("✅ Label encoder loaded successfully")
-            else:
-                print("⚠️  Label encoder not found, using default mapping")
-            
-            # Load metadata (including gene names)
+            # Load metadata (取得 gene_names)
             if os.path.exists(self.metadata_path):
                 with open(self.metadata_path, 'rb') as f:
                     self.metadata = pickle.load(f)
@@ -100,12 +55,42 @@ class LeukemiaCVAEGenerator:
                     self.gene_names = self.metadata['gene_names']
                     print(f"✅ Metadata loaded successfully ({len(self.gene_names)} gene names)")
                 else:
-                    print("⚠️  Gene names not found in metadata, using default names")
-                    self.gene_names = [f'gene_{i}' for i in range(22283)]
+                    raise ValueError('gene_names not found in metadata')
             else:
-                print("⚠️  Metadata not found, using default gene names")
-                self.gene_names = [f'gene_{i}' for i in range(22283)]
-                
+                raise FileNotFoundError(f"Metadata file not found: {self.metadata_path}")
+            # Load model
+            if os.path.exists(self.model_path):
+                from cvae_model import ConditionalVAE
+                checkpoint = torch.load(self.model_path, map_location=self.device, weights_only=False)
+                self.model = ConditionalVAE(
+                    input_dim=len(self.gene_names),
+                    condition_dim=5,
+                    latent_dim=32,
+                    encoder_hidden_dims=[128, 64],
+                    decoder_hidden_dims=[64, 128]
+                )
+                if 'model_state_dict' in checkpoint:
+                    self.model.load_state_dict(checkpoint['model_state_dict'])
+                else:
+                    self.model.load_state_dict(checkpoint)
+                self.model.eval()
+                print("✅ Model loaded successfully")
+            else:
+                raise FileNotFoundError(f"Model file not found: {self.model_path}")
+            # Load scaler
+            if os.path.exists(self.scaler_path):
+                with open(self.scaler_path, 'rb') as f:
+                    self.scaler = pickle.load(f)
+                print("✅ Scaler loaded successfully")
+            else:
+                raise FileNotFoundError(f"Scaler file not found: {self.scaler_path}")
+            # Load label encoder
+            if os.path.exists(self.label_encoder_path):
+                with open(self.label_encoder_path, 'rb') as f:
+                    self.label_encoder = pickle.load(f)
+                print("✅ Label encoder loaded successfully")
+            else:
+                print("⚠️  Label encoder not found, using default mapping")
         except Exception as e:
             print(f"❌ Error loading components: {e}")
             raise
@@ -199,21 +184,13 @@ class LeukemiaCVAEGenerator:
             # Create DataFrame with gene features
             df = pd.DataFrame(data['features'])
             df.columns = self.gene_names
-            
             # Add samples column (starting from next available number)
-            # Generate sample IDs starting from a reasonable number
-            start_sample_id = 1000  # Start from 1000 to avoid conflicts with original data
+            start_sample_id = 1000
             sample_ids = list(range(start_sample_id, start_sample_id + len(df)))
-            
-            # Insert samples and type columns at the beginning to match original format
             df.insert(0, 'samples', sample_ids)
-            df.insert(1, 'type', data['class_names'])  # Use original class names
-            
-            # Ensure column order matches original: samples, type, then all gene columns
+            df.insert(1, 'type', data['class_names'])
             column_order = ['samples', 'type'] + self.gene_names
             df = df[column_order]
-            
-            # Save CSV
             csv_path = os.path.join(output_dir, f'{output_prefix}_{timestamp}.csv')
             df.to_csv(csv_path, index=False)
             results['csv_file'] = csv_path
@@ -240,43 +217,133 @@ class LeukemiaCVAEGenerator:
         
         return results
     
+    def augment_from_raw_samples(self, n_augments=1, balanced=False, samples_per_class=10):
+        """
+        針對原始樣本進行 latent space 擴增
+        Args:
+            n_augments: 每個原始樣本擴增幾倍
+            balanced: 是否 balanced 模式
+            samples_per_class: balanced 模式下每類要產生幾個樣本
+        Returns:
+            dict: augmented data
+        """
+        # 讀取降維後原始資料
+        df = pd.read_csv('datasets/raw_data_reduced.csv')
+        features = df[self.gene_names].values
+        labels = df['type'].values
+        # 轉換 label 為 index
+        if self.label_encoder is not None:
+            label_indices = self.label_encoder.transform(labels)
+        else:
+            label_indices = np.array([self.class_names.index(t) for t in labels])
+        # 標準化
+        features_norm = self.scaler.transform(features)
+        device = self.device
+        all_aug_features = []
+        all_aug_labels = []
+        all_aug_class_names = []
+        if balanced:
+            # 每類各取原始樣本，隨機抽樣
+            for class_idx, class_name in enumerate(self.class_names):
+                class_mask = (label_indices == class_idx)
+                class_features = features_norm[class_mask]
+                n_orig = class_features.shape[0]
+                n_needed = samples_per_class
+                # 若原始樣本不足，重複抽
+                idxs = np.random.choice(n_orig, n_needed, replace=(n_needed > n_orig))
+                sel_features = class_features[idxs]
+                sel_labels = np.full(n_needed, class_idx)
+                # encode
+                cond = torch.zeros(n_needed, len(self.class_names), device=device)
+                cond[range(n_needed), class_idx] = 1.0
+                x_tensor = torch.tensor(sel_features, dtype=torch.float32, device=device)
+                with torch.no_grad():
+                    mu, logvar = self.model.encode(x_tensor, cond)
+                    # latent 擴增
+                    z_aug = mu + torch.randn_like(mu) * 0.2
+                    # decode
+                    x_aug = self.model.decode(z_aug, cond)
+                    x_aug = x_aug.cpu().numpy()
+                    x_aug = self.scaler.inverse_transform(x_aug)
+                all_aug_features.append(x_aug)
+                all_aug_labels.extend(sel_labels)
+                all_aug_class_names.extend([class_name]*n_needed)
+            all_aug_features = np.vstack(all_aug_features)
+            return {
+                'features': all_aug_features,
+                'labels': np.array(all_aug_labels),
+                'class_names': all_aug_class_names,
+                'total_samples': len(all_aug_labels),
+                'samples_per_class': samples_per_class,
+                'generation_time': datetime.now().isoformat()
+            }
+        else:
+            # 非 balanced 模式，針對所有原始樣本擴增 n_augments 倍
+            n_orig = features_norm.shape[0]
+            aug_features = []
+            aug_labels = []
+            aug_class_names = []
+            for i in range(n_orig):
+                x = features_norm[i:i+1]
+                label = label_indices[i]
+                class_name = labels[i]
+                cond = torch.zeros(1, len(self.class_names), device=device)
+                cond[0, label] = 1.0
+                x_tensor = torch.tensor(x, dtype=torch.float32, device=device)
+                with torch.no_grad():
+                    mu, logvar = self.model.encode(x_tensor, cond)
+                    for _ in range(n_augments):
+                        z_aug = mu + torch.randn_like(mu) * 0.2
+                        x_aug = self.model.decode(z_aug, cond)
+                        x_aug = x_aug.cpu().numpy()
+                        x_aug = self.scaler.inverse_transform(x_aug)
+                        aug_features.append(x_aug[0])
+                        aug_labels.append(label)
+                        aug_class_names.append(class_name)
+            aug_features = np.array(aug_features)
+            return {
+                'features': aug_features,
+                'labels': np.array(aug_labels),
+                'class_names': aug_class_names,
+                'n_samples': len(aug_labels),
+                'generation_time': datetime.now().isoformat()
+            }
+
     def quick_generate_and_save(self, leukemia_type, n_samples=10, 
                                output_prefix=None, save_format='both'):
-        """One-click generation and saving"""
+        """針對原始樣本進行 latent 擴增，僅產生指定類別"""
         if output_prefix is None:
             output_prefix = f'{leukemia_type.lower()}_samples'
-        
-        print(f"🧬 Generating {n_samples} {leukemia_type} samples...")
-        data = self.generate_samples(leukemia_type, n_samples)
-        
+        # 只取該類型的原始樣本，並擴增
+        print(f"🧬 Augmenting {n_samples} {leukemia_type} samples from raw data...")
+        data = self.augment_from_raw_samples(n_augments=n_samples, balanced=False)
+        # 篩選指定類別
+        class_idx = self.class_names.index(leukemia_type)
+        mask = (data['labels'] == class_idx)
+        data['features'] = data['features'][mask]
+        data['labels'] = data['labels'][mask]
+        data['class_names'] = [leukemia_type]*np.sum(mask)
+        data['n_samples'] = np.sum(mask)
         print(f"💾 Saving data...")
         files = self.save_data(data, output_prefix, save_format)
-        
-        print(f"✅ Generation complete!")
+        print(f"✅ Augmentation complete!")
         print(f"   - Samples: {data['n_samples']}")
-        print(f"   - Type: {data['leukemia_type']}")
+        print(f"   - Type: {leukemia_type}")
         print(f"   - Files: {list(files.values())}")
-        
         return data
-    
+
     def quick_generate_balanced_and_save(self, samples_per_class=50, 
                                         output_prefix='balanced_leukemia_dataset',
                                         save_format='both'):
-        """One-click balanced dataset generation and saving"""
-        total_samples = samples_per_class * 5
-        print(f"🧬 Generating balanced dataset ({samples_per_class} samples per type)...")
-        print(f"   Total: {total_samples} samples across 5 leukemia types")
-        
-        data = self.generate_balanced_dataset(samples_per_class)
-        
+        """針對原始樣本進行 latent 擴增，balanced 模式"""
+        print(f"🧬 Augmenting balanced dataset ({samples_per_class} samples per type) from raw data...")
+        data = self.augment_from_raw_samples(n_augments=1, balanced=True, samples_per_class=samples_per_class)
         print(f"💾 Saving data...")
         files = self.save_data(data, output_prefix, save_format)
-        
-        print(f"✅ Generation complete!")
+        print(f"✅ Augmentation complete!")
         print(f"   - Total samples: {data['total_samples']}")
         print(f"   - Per class: {data['samples_per_class']}")
         print(f"   - Files: {list(files.values())}")
-        
         return data
 
 # Simple example usage
